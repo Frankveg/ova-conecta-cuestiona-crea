@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="OVA Conecta, cuestiona y crea: laboratorio digital de pensamiento crítico, alfabetización mediática y ciudadanía digital." />
+  <title>Conecta, cuestiona y crea</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <header class="topbar">
+    <div class="brand" role="button" tabindex="0" aria-label="Ir al inicio" data-nav="home">
+      <div class="brand-mark" aria-hidden="true">CQC</div>
+      <div>
+        <strong>Conecta, cuestiona y crea</strong>
+        <span>Laboratorio digital para aprender a pensar</span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="fontToggle" aria-label="Aumentar tamaño de texto">A+</button>
+      <button class="icon-btn" id="contrastToggle" aria-label="Activar alto contraste">◐</button>
+      <button class="icon-btn" id="helpBtn" aria-label="Abrir ayuda">?</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegación del OVA">
+      <div class="progress-card">
+        <div class="progress-head"><span>Tu progreso</span><strong id="progressText">0%</strong></div>
+        <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progressFill"></div></div>
+        <small id="profileMini">Perfil: aún no definido</small>
+      </div>
+      <nav id="sideNav"></nav>
+      <button class="secondary wide" id="resetBtn">Reiniciar progreso</button>
+    </aside>
+
+    <main id="main" tabindex="-1"></main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="helpDialog">
+    <div class="dialog-head">
+      <h2>Cómo usar este OVA</h2>
+      <button class="icon-btn" data-close-dialog aria-label="Cerrar">×</button>
+    </div>
+    <p>Avanza en orden por los módulos. Tus respuestas y progreso se guardan únicamente en este navegador mediante almacenamiento local.</p>
+    <ul>
+      <li>No se solicita nombre, correo ni datos personales.</li>
+      <li>Puedes volver a cualquier módulo desde el menú.</li>
+      <li>El reto final se habilita cuando hayas recorrido los módulos 0 a 6.</li>
+      <li>Al finalizar puedes imprimir o guardar tu expediente como PDF.</li>
+    </ul>
+    <p><strong>Privacidad:</strong> este prototipo no envía datos a servidores externos.</p>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
