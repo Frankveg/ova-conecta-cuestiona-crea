@@ -1,5 +1,9 @@
-const APP_VERSION = '1.0.0';
-const STORAGE_KEY = 'ova_cqc_state_v1';
+const APP_VERSION = '2.2.0';
+let ANALYTICS_KEY = 'ova_cqc_analytics_v2';
+let STORAGE_KEY = 'ova_cqc_state_v1';
+const ACCOUNT_KEY='ova_cqc_accounts_v22';
+const SESSION_KEY='ova_cqc_active_user_v22';
+let activeUser=null;
 
 const MODULES = [
   ['home', 'Inicio'],
@@ -11,7 +15,8 @@ const MODULES = [
   ['m5', '5. Pensamos mejor juntos'],
   ['m6', '6. Ciudadano digital'],
   ['final', 'Reto final'],
-  ['meta', 'Mi aprendizaje']
+  ['meta', 'Mi aprendizaje'],
+  ['analytics', 'Mi progreso y evidencias']
 ];
 
 const defaultState = {
@@ -30,6 +35,90 @@ const defaultState = {
 };
 
 let state = loadState();
+let analytics = loadAnalytics();
+let lastActivity = Date.now();
+let currentViewStart = Date.now();
+let sessionStarted = Date.now();
+function loadAnalytics(){
+  try { const a=JSON.parse(localStorage.getItem(ANALYTICS_KEY)||'null');
+    if(a && typeof a==='object' && Array.isArray(a.events)) return a;
+  } catch(e){} return {participant:'',consent:false,startedAt:null,events:[],notes:[]};
+}
+function persistAnalytics(){try{localStorage.setItem(ANALYTICS_KEY,JSON.stringify(analytics));}catch(e){console.warn('No se pudo guardar la analítica local',e);}}
+function recordEvent(type,detail={}){
+  if(!analytics.consent || !analytics.participant)return;
+  const event={at:new Date().toISOString(),participant:analytics.participant,module:state.current,type,detail};
+  analytics.events.push(event);
+  if(analytics.events.length>4000)analytics.events=analytics.events.slice(-4000);
+  persistAnalytics();
+}
+function recordDuration(){
+  if(!analytics.consent)return;
+  const now=Date.now(),secs=Math.round((now-currentViewStart)/1000);
+  if(secs>=2 && secs<=3600)recordEvent('tiempo_modulo',{seconds:secs});
+  currentViewStart=now;
+}
+function requireParticipant(){if(analytics.consent && analytics.participant)return true;toast('Inicia sesión para comenzar la prueba.');navigate('analytics');return false;}
+function analyticsView(){
+  const es=analytics.events;
+  const visits=es.filter(e=>e.type==='visita_modulo');
+  const completed=es.filter(e=>e.type==='modulo_completado');
+  const difficulties=es.filter(e=>['dificultad','validacion_incompleta'].includes(e.type));
+  const decisions=es.filter(e=>e.type==='decision');
+  const answers=es.filter(e=>e.type==='respuesta' && typeof e.detail?.correct==='boolean');
+  const correct=answers.filter(e=>e.detail.correct).length,wrong=answers.length-correct;
+  const durations=es.filter(e=>e.type==='tiempo_modulo');
+  const time=durations.reduce((n,e)=>n+(Number(e.detail?.seconds)||0),0);
+  const pct=progressPercent();
+  const moduleIds=['m0','m1','m2','m3','m4','m5','m6','final','meta'];
+  const names={m0:'Perfil digital',m1:'Información',m2:'Método CRITICA',m3:'Algoritmos',m4:'Inteligencia artificial',m5:'Colaboración',m6:'Ciudadanía digital',final:'Reto final',meta:'Mi aprendizaje'};
+  const active=analytics.consent && analytics.participant;
+  const totalDecisions=decisions.length;
+  const evidenceCount=es.length+analytics.notes.length;
+  const stat=(label,value,note)=>`<div class="la-stat"><div class="la-stat-label">${label}</div><div class="la-stat-value">${value}</div><div class="la-stat-note">${note}</div></div>`;
+  const bar=(label,value,max,unit='')=>`<div class="la-bar-row"><span class="la-bar-label">${esc(label)}</span><div class="la-bar-track" role="img" aria-label="${esc(label)}: ${value}${unit}"><span style="width:${max?Math.min(100,Math.round(value/max*100)):0}%"></span></div><strong>${value}${unit}</strong></div>`;
+  const moduleBars=moduleIds.map(id=>{
+    const count=visits.filter(e=>e.module===id).length;
+    const done=state.completed.includes(id);
+    return `<div class="la-module-row"><span>${esc(names[id])}</span><div class="la-module-track"><span style="width:${done?'100':count?'45':'0'}%" class="${done?'la-done':''}"></span></div><small>${done?'Finalizado':count?'Visitado':'Pendiente'}</small></div>`;
+  }).join('');
+  const recent=[...es.map(e=>({at:e.at,type:e.type,module:e.module,detail:e.detail})),...analytics.notes.map(n=>({at:n.at,type:'observación: '+n.kind,module:n.module,detail:{text:n.text}}))].sort((a,b)=>b.at.localeCompare(a.at)).slice(0,12);
+  const eventRows=recent.map(e=>`<tr><td>${esc(new Date(e.at).toLocaleString('es-CO'))}</td><td>${esc(names[e.module]||e.module||'General')}</td><td>${esc(e.type.replaceAll('_',' '))}</td><td>${esc(String(e.detail?.text||e.detail?.choice||e.detail?.seconds&&e.detail.seconds+' s'||'').slice(0,90))}</td></tr>`).join('');
+  const comprehension=answers.length?Math.round(correct/answers.length*100):null;
+  return `${moduleHead('OVA 2.2 · Learning Analytics','Mi progreso y evidencias','Panel de analítica local del participante. Los gráficos se actualizan con los eventos registrados en este navegador.','Panel local')}
+  <section class="card section la-session"><div><h2>Participante ${active?esc(activeUser?.name||analytics.participant):'sin registrar'} <small>(${esc(analytics.participant)})</small></h2><p class="muted">${active?'Sesión activa · Los datos se almacenan localmente.':'Regístrate en la pantalla de acceso para activar la analítica.'}</p></div><button class="secondary" id="endParticipant" ${active?'':'disabled'}>Cerrar sesión</button></section>
+  <section class="section"><h2>1. Resumen del aprendizaje</h2><div class="la-stats">
+  ${stat('Progreso',pct+'%','Actividades completadas')}${stat('Permanencia',Math.round(time/60)+' min','Tiempo registrado aproximado')}${stat('Decisiones',totalDecisions,'Elecciones registradas')}${stat('Comprensión',comprehension===null?'Sin datos':comprehension+'%','Aciertos en respuestas evaluables')}
+  </div></section>
+  <section class="la-dashboard section">
+    <article class="card la-panel"><h2>2. Avance por módulo</h2><p class="muted">Distingue módulos visitados, finalizados y pendientes.</p><div class="la-module-chart">${moduleBars}</div><div class="la-legend"><span>■ Finalizado</span><span>■ Visitado</span></div></article>
+    <article class="card la-panel"><h2>3. Aciertos y errores</h2><p class="muted">Solo se cuentan respuestas que el OVA puede evaluar automáticamente.</p><div class="la-donut" style="--la-correct:${answers.length?correct/answers.length*100:0}%"><div><strong>${answers.length?comprehension+'%':'—'}</strong><small>${answers.length?'de aciertos':'Sin respuestas'}</small></div></div><div class="la-legend"><span><i class="la-dot la-green"></i>Aciertos: ${correct}</span><span><i class="la-dot la-red"></i>Errores: ${wrong}</span></div></article>
+    <article class="card la-panel"><h2>4. Tiempo por módulo</h2><p class="muted">Segundos acumulados al cambiar de módulo o salir de la página.</p><div class="la-bar-chart">${moduleIds.map(id=>bar(names[id],durations.filter(e=>e.module===id).reduce((n,e)=>n+(Number(e.detail?.seconds)||0),0),Math.max(1,...moduleIds.map(mid=>durations.filter(e=>e.module===mid).reduce((n,e)=>n+(Number(e.detail?.seconds)||0),0))),' s')).join('')}</div></article>
+    <article class="card la-panel"><h2>5. Interacciones y dificultades</h2><p class="muted">Frecuencia de acciones detectadas durante la prueba.</p><div class="la-bar-chart">${[['Visitas',visits.length],['Decisiones',decisions.length],['Dificultades',difficulties.length],['Observaciones',analytics.notes.length],['Finalizaciones',completed.length]].map(([name,n])=>bar(name,n,Math.max(1,visits.length,decisions.length,difficulties.length,analytics.notes.length,completed.length))).join('')}</div><p class="muted">Un error no equivale necesariamente a una dificultad pedagógica; revisa la bitácora para interpretarlo.</p></article>
+  </section>
+  <section class="card section la-panel"><h2>6. Bitácora de eventos recientes</h2><p class="muted">Últimos 12 eventos de esta prueba. Exporta CSV o JSON para consultar el historial completo.</p><div class="la-table-wrap"><table class="la-table"><thead><tr><th>Fecha y hora</th><th>Módulo</th><th>Evento</th><th>Detalle</th></tr></thead><tbody>${eventRows||'<tr><td colspan="4">Todavía no hay eventos. Completa actividades para generar evidencias.</td></tr>'}</tbody></table></div></section>
+  <section class="card section"><h2>7. Registrar dificultades y observaciones</h2><p>El evaluador puede documentar dudas, dificultades, abandonos, aciertos o solicitudes de ayuda. No incluyas datos personales.</p><div class="form-row"><label for="evidenceKind">Tipo de evidencia</label><select id="evidenceKind">${['Duda','Dificultad','Error','Acierto','Solicitud de ayuda','Abandono','Observación'].map(x=>`<option>${x}</option>`).join('')}</select></div>${textArea('evidenceNote','Describe brevemente lo observado','')}<button class="secondary" id="saveEvidence">Registrar observación</button></section>
+  <section class="card section"><h2>8. Exportar evidencias</h2><p>Exporta al finalizar cada prueba. El OVA no envía los registros a ningún servidor.</p><div class="hero-actions"><button class="primary" id="exportCSV">Exportar CSV</button><button class="secondary" id="exportJSON">Exportar JSON</button><button class="secondary" id="clearAnalytics">Borrar evidencias locales</button></div><p class="muted">${evidenceCount} registros y observaciones almacenados en este navegador.</p></section>`;
+}
+function downloadBlob(data,type,name){const b=new Blob([data],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+function exportAnalytics(format){
+  if(!analytics.participant){toast('Registra un participante antes de exportar.');return;}
+  const rows=[...analytics.events,...analytics.notes.map(n=>({at:n.at,participant:analytics.participant,module:n.module,type:'observacion_'+n.kind,detail:{text:n.text}}))].sort((a,b)=>a.at.localeCompare(b.at));
+  const base='OVA2_'+analytics.participant+'_evidencias';
+  if(format==='json'){downloadBlob(JSON.stringify({version:APP_VERSION,participant:analytics.participant,startedAt:analytics.startedAt,exportedAt:new Date().toISOString(),completed:state.completed,events:rows},null,2),'application/json;charset=utf-8',base+'.json');return;}
+  const csvCell=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+  const csv=[['fecha','participante','modulo','evento','detalle'].map(csvCell).join(','),...rows.map(e=>[e.at,e.participant,e.module,e.type,JSON.stringify(e.detail)].map(csvCell).join(','))].join('\r\n');
+  downloadBlob('\ufeff'+csv,'text/csv;charset=utf-8',base+'.csv');
+}
+function bindAnalytics(){
+  const end=document.getElementById('endParticipant');
+  if(end)end.onclick=()=>{logoutAccount();};
+  const save=document.getElementById('saveEvidence');
+  if(save)save.onclick=()=>{if(!analytics.consent){toast('Inicia una prueba primero.');return;}const text=document.getElementById('evidenceNote').value.trim();if(!text){toast('Escribe una observación.');return;}const kind=document.getElementById('evidenceKind').value;analytics.notes.push({at:new Date().toISOString(),module:state.current,kind,text});recordEvent('observacion',{kind});persistAnalytics();render();toast('Observación registrada.');};
+  const exportCSVBtn=document.getElementById('exportCSV'); if(exportCSVBtn) exportCSVBtn.onclick=()=>exportAnalytics('csv');
+  const exportJSONBtn=document.getElementById('exportJSON'); if(exportJSONBtn) exportJSONBtn.onclick=()=>exportAnalytics('json');
+  const clearAnalyticsBtn=document.getElementById('clearAnalytics'); if(clearAnalyticsBtn) clearAnalyticsBtn.onclick=()=>{if(confirm('¿Borrar de este navegador todas las evidencias de la prueba? Exporta primero si deseas conservarlas.')){analytics={participant:activeUser?.username||'',consent:true,startedAt:new Date().toISOString(),events:[],notes:[]};persistAnalytics();render();}};
+}
 
 function loadState(){
   try {
@@ -46,13 +135,13 @@ function deepMerge(target, source){
   return target;
 }
 function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); updateChrome(); }
-function markComplete(id){ if(!state.completed.includes(id)) state.completed.push(id); saveState(); }
+function markComplete(id){ if(!state.completed.includes(id)){state.completed.push(id);recordEvent('modulo_completado',{id});} saveState(); }
 function isComplete(id){ return state.completed.includes(id); }
 function progressPercent(){
   const tracked = ['m0','m1','m2','m3','m4','m5','m6','final','meta'];
   return Math.round(tracked.filter(isComplete).length / tracked.length * 100);
 }
-function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2200); }
+function toast(msg){ if(/completa|responde|selecciona|escribe|primero/i.test(msg))recordEvent('validacion_incompleta',{message:msg}); const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2200); }
 function esc(s=''){ return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
 function updateChrome(){
@@ -71,17 +160,23 @@ function renderNav(){
 }
 
 function navigate(id){
+  if(!activeUser){syncRegistrationGate();return;}
   const locked = (id==='final' && !['m0','m1','m2','m3','m4','m5','m6'].every(isComplete)) || (id==='meta' && !isComplete('final'));
   if(locked){ toast('Completa primero los módulos anteriores.'); return; }
-  state.current=id; saveState(); render(); window.scrollTo({top:0,behavior:'smooth'}); document.getElementById('main').focus({preventScroll:true});
+  if(id!=='analytics' && id!=='home' && !requireParticipant())return;
+  if(state.current!==id){recordDuration();recordEvent('salida_modulo',{to:id});}
+  state.current=id; saveState(); recordEvent('visita_modulo',{id}); render(); window.scrollTo({top:0,behavior:'smooth'}); document.getElementById('main').focus({preventScroll:true});
 }
 
 function render(){
+  if(!activeUser){state.current='home';}
   const main = document.getElementById('main');
-  const views = {home, m0, m1, m2, m3, m4, m5, m6, final:finalChallenge, meta};
+  const views = {home, m0, m1, m2, m3, m4, m5, m6, final:finalChallenge, meta, analytics:analyticsView};
   main.innerHTML = views[state.current]();
   bindView();
+  bindAnalytics();
   updateChrome();
+  syncRegistrationGate();
 }
 
 function moduleHead(kicker,title,desc,time='10–15 min'){
@@ -319,8 +414,85 @@ function globalBindings(){
   document.getElementById('fontToggle').onclick=()=>document.body.classList.toggle('large-text');
   document.getElementById('contrastToggle').onclick=()=>document.body.classList.toggle('high-contrast');
   document.getElementById('helpBtn').onclick=()=>document.getElementById('helpDialog').showModal();
+  document.body.addEventListener('change',e=>{
+    const el=e.target;if(!analytics.consent || !el)return;
+    if(el.matches('input[type="radio"],select')){
+      const id=(el.name||el.id||'opcion').slice(0,55);
+      recordEvent('decision',{control:id,choice:String(el.value).slice(0,90)});
+      if(/^dil\d+$/.test(id)){
+        const ix=Number(id.replace('dil',''));
+        if(typeof dilemmas!=='undefined' && dilemmas[ix])recordEvent('respuesta',{activity:'dilema',index:ix,correct:String(el.value)===String(dilemmas[ix].correct)});
+      }
+    }
+  });
+  document.body.addEventListener('click',e=>{
+    if(!analytics.consent)return;
+    const el=e.target.closest('.feed-choice,.stance,.ai-segment,.case-option,.verdict');
+    if(el)recordEvent('decision',{control:el.className.split(' ')[0],choice:String(el.dataset.feed??el.dataset.stance??el.dataset.ai??el.dataset.case??el.dataset.verdict??'').slice(0,80)});
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)recordDuration();else currentViewStart=Date.now();});
+  window.addEventListener('pagehide',()=>{recordDuration();recordEvent('cierre_pagina',{progress:progressPercent()});});
   document.getElementById('resetBtn').onclick=()=>{if(confirm('¿Seguro que deseas borrar todo el progreso guardado en este navegador?')){localStorage.removeItem(STORAGE_KEY);state=structuredClone(defaultState);render();toast('Progreso reiniciado.');}};
 }
 
+
+function accountList(){try{return JSON.parse(localStorage.getItem(ACCOUNT_KEY)||'{}')}catch{return {}}}
+function accountStorage(username){ANALYTICS_KEY='ova_cqc_analytics_v22_'+username;STORAGE_KEY='ova_cqc_state_v22_'+username;}
+function b64(bytes){return btoa(String.fromCharCode(...bytes))}
+function unb64(s){return Uint8Array.from(atob(s),c=>c.charCodeAt(0))}
+async function hashPassword(password,salt){
+ if(!crypto?.subtle)throw Error('Este navegador requiere HTTPS o localhost para proteger la clave. Abre el OVA desde GitHub Pages.');
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
+ const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:unb64(salt),iterations:150000,hash:'SHA-256'},key,256);
+ return b64(new Uint8Array(bits));
+}
+function activateAccount(username,account){
+ accountStorage(username);activeUser={username,name:account.name};
+ sessionStorage.setItem(SESSION_KEY,username);
+ state=loadState();analytics=loadAnalytics();
+ analytics.participant=username;analytics.consent=true;analytics.startedAt ||= new Date().toISOString();
+ persistAnalytics();recordEvent('inicio_sesion',{version:APP_VERSION});
+ currentViewStart=Date.now();state.current='home';saveState();render();
+}
+function logoutAccount(){
+ recordDuration();recordEvent('fin_sesion',{completed:state.completed.length});
+ activeUser=null;sessionStorage.removeItem(SESSION_KEY);
+ analytics={participant:'',consent:false,startedAt:null,events:[],notes:[]};state=structuredClone(defaultState);
+ render();
+}
+function syncRegistrationGate(){
+ const gate=document.getElementById('registrationGate');if(!gate)return;
+ gate.hidden=!!activeUser;
+ const float=document.getElementById('floatingAnalytics');if(float)float.hidden=!activeUser;
+}
+function bindRegistrationGate(){
+ let mode='register';
+ const form=document.getElementById('gateForm'),nameWrap=document.getElementById('gateNameWrap');
+ const tabs=[document.getElementById('tabRegister'),document.getElementById('tabLogin')];
+ function setMode(next){mode=next;tabs[0].classList.toggle('active',mode==='register');tabs[1].classList.toggle('active',mode==='login');nameWrap.hidden=mode==='login';document.getElementById('gateName').required=mode==='register';document.getElementById('gateConsentWrap').hidden=mode==='login';document.getElementById('gateConsent').required=mode==='register';document.getElementById('gateSubmit').textContent=mode==='register'?'Crear usuario e ingresar →':'Ingresar al OVA →';document.getElementById('gatePassword').autocomplete=mode==='register'?'new-password':'current-password';document.getElementById('gateError').hidden=true;}
+ tabs[0].onclick=()=>setMode('register');tabs[1].onclick=()=>setMode('login');
+ form.addEventListener('submit',async e=>{
+  e.preventDefault();const username=document.getElementById('gateUsername').value.trim().toLowerCase();const password=document.getElementById('gatePassword').value;const name=document.getElementById('gateName').value.trim();const err=document.getElementById('gateError'),submit=document.getElementById('gateSubmit');err.hidden=true;
+  if(!/^[a-z0-9_-]{3,24}$/.test(username)||password.length<8){err.textContent='Usuario inválido o clave de menos de 8 caracteres.';err.hidden=false;return;}
+  submit.disabled=true;
+  try{
+   const accounts=accountList();let account=accounts[username];
+   if(mode==='register'){
+    if(account)throw Error('Este usuario ya existe en este navegador. Selecciona «Ya tengo usuario».');
+    if(!name)throw Error('Escribe tu nombre.');
+    const salt=b64(crypto.getRandomValues(new Uint8Array(16)));
+    account={name,salt,hash:await hashPassword(password,salt)};accounts[username]=account;localStorage.setItem(ACCOUNT_KEY,JSON.stringify(accounts));
+   }else{
+    if(!account || await hashPassword(password,account.salt)!==account.hash)throw Error('Usuario o clave incorrectos en este navegador.');
+   }
+   document.getElementById('gatePassword').value='';activateAccount(username,account);toast('Bienvenido/a, '+account.name);
+  }catch(ex){err.textContent=ex.message;err.hidden=false;}finally{submit.disabled=false;}
+ });
+ const float=document.getElementById('floatingAnalytics');float.onclick=()=>{if(activeUser)navigate('analytics');};
+ const previous=sessionStorage.getItem(SESSION_KEY);const saved=accountList()[previous];
+ if(previous && saved){accountStorage(previous);activeUser={username:previous,name:saved.name};state=loadState();analytics=loadAnalytics();analytics.participant=previous;analytics.consent=true;persistAnalytics();}
+}
+
+bindRegistrationGate();
 globalBindings();
 render();

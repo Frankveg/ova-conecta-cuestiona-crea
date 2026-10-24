@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="OVA Conecta, cuestiona y crea: laboratorio digital de pensamiento crítico, alfabetización mediática y ciudadanía digital." />
-  <title>Conecta, cuestiona y crea</title>
+  <title>Conecta, cuestiona y crea · OVA 2.0</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -24,6 +24,24 @@
     </div>
   </header>
 
+  <div id="registrationGate" class="registration-gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+    <div class="gate-panel">
+      <div class="gate-logo">CQC <span>OVA 2.2</span></div>
+      <p class="gate-eyebrow">Acceso al laboratorio digital</p>
+      <h1 id="gateTitle">Registro e ingreso</h1>
+      <p>Crea tu usuario para registrar tu progreso y consultar tus gráficos de aprendizaje.</p>
+      <div class="gate-tabs"><button type="button" id="tabRegister" class="gate-tab active">Crear usuario</button><button type="button" id="tabLogin" class="gate-tab">Ya tengo usuario</button></div>
+      <form id="gateForm" autocomplete="on">
+        <div id="gateNameWrap"><label for="gateName">Nombre</label><input id="gateName" name="name" maxlength="80" autocomplete="name" placeholder="Tu nombre" required></div>
+        <label for="gateUsername">Usuario</label><input id="gateUsername" name="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]{3,24}" autocomplete="username" placeholder="Ejemplo: estudiante01" required>
+        <label for="gatePassword">Clave</label><input id="gatePassword" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres" required>
+        <label class="gate-check" id="gateConsentWrap"><input id="gateConsent" type="checkbox" required><span>Acepto guardar mis datos y evidencias de aprendizaje en este navegador. Puedo exportarlos o borrarlos.</span></label>
+        <p id="gateError" role="alert" class="gate-error" hidden></p>
+        <button type="submit" class="primary gate-submit" id="gateSubmit">Crear usuario e ingresar →</button>
+      </form>
+      <small>Este prototipo funciona sin servidor. Las cuentas solo existen en este navegador; la clave no se guarda en texto plano, pero no ofrece seguridad de autenticación de un servicio en línea. No uses contraseñas personales.</small>
+    </div>
+  </div>
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navegación del OVA">
       <div class="progress-card">
@@ -32,12 +50,14 @@
         <small id="profileMini">Perfil: aún no definido</small>
       </div>
       <nav id="sideNav"></nav>
+      <p class="analytics-hint">OVA 2.2 · Registro y analítica gráfica</p>
       <button class="secondary wide" id="resetBtn">Reiniciar progreso</button>
     </aside>
 
     <main id="main" tabindex="-1"></main>
   </div>
 
+  <button id="floatingAnalytics" class="floating-analytics" type="button" hidden aria-label="Abrir gráficos de seguimiento">📊 <span>Mis gráficos</span></button>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <dialog id="helpDialog">
@@ -45,9 +65,9 @@
       <h2>Cómo usar este OVA</h2>
       <button class="icon-btn" data-close-dialog aria-label="Cerrar">×</button>
     </div>
-    <p>Avanza en orden por los módulos. Tus respuestas y progreso se guardan únicamente en este navegador mediante almacenamiento local.</p>
+    <p>Antes de entrar debes crear tu usuario o iniciar sesión con nombre de usuario y clave. Avanza en orden por los módulos. Tus respuestas y progreso se guardan únicamente en este navegador mediante almacenamiento local.</p>
     <ul>
-      <li>No se solicita nombre, correo ni datos personales.</li>
+      <li>Se solicita un nombre de participante; evita introducir datos sensibles.</li>
       <li>Puedes volver a cualquier módulo desde el menú.</li>
       <li>El reto final se habilita cuando hayas recorrido los módulos 0 a 6.</li>
       <li>Al finalizar puedes imprimir o guardar tu expediente como PDF.</li>
